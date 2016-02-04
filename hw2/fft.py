@@ -3,6 +3,8 @@ import math
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+import random
+import time
 
 ############ TEST DATA ############
 testSet = []
@@ -83,6 +85,27 @@ def fftPolyMult(a, b):
 	y = np.array(pvC)
 	
 	return np.real(np.dot(y,V))
+	
+def recursiveFFT(a):
+	a = makePower2(a)
+	n = len(a)
+	nHalf = int(math.floor(n/2))
+	
+	if n == 1:
+		return a
+		
+	wn = complexExp(2*math.pi/n)
+	w = 1
+	a0 = a[::2]#even elements
+	a1 = a[1::2]#odd elements
+	y0 = recursiveFFT(a0)
+	y1 = recursiveFFT(a1)
+	y = [0]*n
+	for k in range(0, nHalf):
+		y[k] = y0[k] + w*y1[k]
+		y[k+nHalf] = y0[k] - w*y1[k]
+		w = w * wn
+	return y
 
 def polyMultDC(a, b):
 	n = len(a)
@@ -149,6 +172,38 @@ def testResults(testSet):
 #print(fftPolyMult(testSet[1][0], testSet[1][1]))
 
 
+#Generate random tests and compare times
+defaultTime = [0]
+fftTime = [0]
 
+defaultEnabled = True
+iterations = 1000
 
+for i in range(0, iterations):
+	testA = [random.random() * 10 for j in range(i)]
+	testB = [random.random() * 10 for j in range(i)]
+	start = time.time()
+	fftPolyMult(testA, testB)
+	totalFFTTime = (time.time() - start)*1000
+	fftTime.append(totalFFTTime)
+	print("%d: %d ms" %(i,totalFFTTime))
+	
+	if defaultEnabled:
+		start = time.time()
+		polyMult(testA, testB)
+		totalTime = (time.time() - start)*1000
+		defaultTime.append(totalTime)
+		if totalTime > 500 and totalTime > totalFFTTime:
+			defaultEnabled = False
+			
+	
+line1 = plt.plot(defaultTime, label="Default algorithm")
+line2 = plt.plot(fftTime, label="FFT algorithm")
 
+plt.legend(loc='upper left')
+plt.legend(loc='upper left')
+
+plt.axis([0, iterations, 0, max(fftTime)])
+plt.xlabel('Polynomial Degree')
+plt.ylabel('Time (ms)')
+plt.show()
