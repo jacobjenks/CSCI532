@@ -54,8 +54,8 @@ class Vehicle:
 		self.velZEst = self.velZ
 		
 		#Kalman stuff 
-		self.x = np.matrix([[startPos,0, 0],[0,0,0],[0,0,0]])#State matrix
-		self.p = np.zeros((3,3))#State covariance matrix
+		self.x = np.zeros(9)#State matrix
+		self.p = np.identity(9)#State covariance matrix
 
 		self.time = 0
 		self.crashed = False#Whether or not vehicle has crashed yet
@@ -106,7 +106,7 @@ class Vehicle:
 		self.velYEst += ay
 		self.velZEst += az
 
-		self.kalman(timeUpdate, ax, ay, az)
+		self.kalman2(timeUpdate, ax, ay, az)
 
 		#Crash if we hit the ground
 		if self.posY < 0:
@@ -121,10 +121,11 @@ class Vehicle:
 		
 	def printValues(self):
 		test = ""
-		#print "---Time %d---" % self.time
+		print "---Time %d---" % self.time
 		print "True:      %d, %d: %d, %d" % (self.posX, self.posY, self.velX, self.velY)
 		#print "Estimated: %d, %d" % (self.posXEst, self.posYEst)
-		print "Kalman:    %d, %d: %d, %d" % (self.x[0,0], self.x[0,1], self.x[1,0], self.x[0,1])
+		#print "Kalman:    %d, %d: %d, %d" % (self.x[0,0], self.x[0,1], self.x[1,0], self.x[0,1])
+		print "-------------"
 
 	def printLogs(self, numLogs = 1):
 		lineTrue = plt.plot(self.logGT.posX, self.logGT.posY, "g", label=self.logGT.name)#, c=[x for x in range(self.time)])
@@ -138,21 +139,64 @@ class Vehicle:
 		plt.tight_layout()
 		plt.show()
 
-	#ax,ay,az = accell a,y,z
+	#ax,ay,az = accel a,y,z
 	def kalman(self, delta, ax, ay, az):
 		## Variables	
-		A = np.matrix([[1, delta, 0], [0, 1, delta], [0,0,1]])#State transition matrix
+		A = np.matrix([[1, delta, .5*math.pow(delta, 2)], [0,1,delta],[0,0,1]])#State transition matrix
 		B = np.matrix([[1, delta, .5*math.pow(delta, 2)], [0,1,delta],[0,0,1]])#Input control matrix
-		H = np.matrix([0, 0, 1])#Measurement matrix - expected measurement given predicted state
+		#H = np.matrix([[0,0,0],[0,0,0],[0, 0, 1]])#Measurement matrix - expected measurement given predicted state
+		H = np.identity(3)
 		#errorX = math.pow(self.randomForce, 2) * np.matrix([[math.pow(timeUpdate, 4)/4, math.pow(timeUpdate, 3)/2],[math.pow(timeUpdate, 3)/2, math.pow(timeUpdate, 2)]])# process noise standard deviation converted into covariance matrix
 		#errorZ = math.pow(self.sensorNoise, 2) 
-		Q = B*self.randomForce*B.T#piecewise process noise
-		R = self.sensorNoise*np.identity(3) + .00000001#measurement noise. Added tiny extra bit to avoid divide by 0
-
+		gamma = np.array(.5*math.pow(delta, 2))
+		Q = gamma*self.randomForce*gamma.T#piecewise process noise
+		R = self.sensorNoise*np.identity(3)#measurement noise
+		
 		## Prediction Step 
 		#
 		self.x = A.dot(self.x)# + B.dot(np.matrix([[0,0],[ax, ay, az]]))
-		self.p = A.dot(self.p).dot(A) + Q 
+		self.p = A*self.p*A.T + Q 
+		
+		## Update Step 
+		#
+		## Kalman Gain
+		K = (self.p * H.T) / (H*self.p*H.T + R)
+		#print "K: "
+		#print K
+
+		## Update State Estimate
+		self.x = self.x + K * (np.array([[self.x[0,0],self.x[0,1],self.x[0,2]],[self.x[1,0],self.x[1,1],self.x[1,2]],[ax, ay, az]]) - H*self.x)	
+		self.p = (np.identity(3) - K*H.T)*self.p
+		
+		#####################
+
+	def kalman2(self, delta, ax, ay, az):
+		## Variables	
+		A = np.identity(9)
+		A[0,3] = delta
+		A[1,4] = delta
+		A[2,5] = delta
+		A[3,6] = delta
+		A[4,7] = delta
+		A[5,8] = delta
+		A[0,6] = .5*math.pow(delta, 2)	
+		A[1,7] = .5*math.pow(delta, 2)	
+		A[2,8] = .5*math.pow(delta, 2)	
+
+	
+		H = np.zeros((3,9))
+		H[0,6] = 1
+		H[1,7] = 1
+		H[2,8] = 1
+		
+		gamma = np.array(.5*math.pow(delta, 2))
+		Q = gamma*self.randomForce*gamma.T#piecewise process noise
+		R = self.sensorNoise*np.identity(3)#measurement noise
+		
+		## Prediction Step 
+		#
+		self.x = A.dot(self.x)# + B.dot(np.matrix([[0,0],[ax, ay, az]]))
+		self.p = A*self.p*A.T + Q 
 		
 		## Update Step 
 		#
@@ -160,7 +204,12 @@ class Vehicle:
 		K = (self.p * H.T) / (H*self.p*H.T + R)
 
 		## Update State Estimate
-		self.x = self.x + K * (np.array([[0,0,0],[0,0,0],[ax, ay, az]]) - H*self.x)	
+		z = np.zeros((3,9))
+		z[0,6] = ax
+		z[1,7] = ay
+		z[2,8] = az
+
+		self.x = self.x + K * (z - H*self.x)	
 		self.p = (np.identity(3) - K*H.T)*self.p
 		
 		#####################
@@ -172,7 +221,7 @@ class Vehicle:
 #	Moderate: .5g
 #	Severe: 1.5g
 #	Very severe: > 1.5g
-v = Vehicle(.1, 0*gravity)
+v = Vehicle(.5, 0*gravity)
 
 #Accelerate for 10 seconds
 for x in range(0, 10):
